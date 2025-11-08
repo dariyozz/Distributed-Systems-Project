@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: flink-processor
+
+kafka:
+  bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+  consumer:
+    group-id: flink-processor-group
+    auto-offset-reset: latest
+
+  topics:
+    input:
+      - smoke-fire
+      - vehicle-speed
+      - noise-level
+      - air-temp
+    output:
+      alerts: alerts
+
+flink:
+  parallelism: 4
+  checkpointing:
+    enabled: true
+    interval: 60000  # 1 minute
+
+alerts:
+  thresholds:
+    fire: 70.0
+    speed: 100.0
+    speed-critical: 130.0
+    noise: 90.0
+    noise-critical: 100.0
+    aqi: 150.0
+    aqi-critical: 200.0
+    temp-low: 0.0
+    temp-high: 38.0
+
+logging:
+  level:
+    citysensor: INFO
+    org.apache.flink: WARN
+    org.apache.kafka: WARN

@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: data-generator
+
+kafka:
+  bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+  producer:
+    acks: 1
+    retries: 3
+    linger-ms: 10
+    batch-size: 16384
+
+sensors:
+  cities:
+    - New York
+    - Los Angeles
+    - Chicago
+    - Houston
+    - Phoenix
+
+  intervals:
+    smoke-fire: 1000      # 1 second
+    vehicle-speed: 500    # 0.5 seconds (variable)
+    noise-level: 1000     # 1 second
+    air-temp: 10000       # 10 seconds
+
+logging:
+  level:
+    citysensor: INFO
+    org.apache.kafka: WARN
