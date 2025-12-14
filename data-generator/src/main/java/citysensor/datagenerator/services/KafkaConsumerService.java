@@ -13,13 +13,14 @@ import reactor.core.publisher.Sinks;
 @RequiredArgsConstructor
 @Slf4j
 public class KafkaConsumerService {
-    
+
     private final DatabaseService databaseService;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    
+
     // Create a sink for broadcasting sensor data to multiple subscribers
-    private final Sinks.Many<String> sensorDataSink = Sinks.many().multicast().onBackpressureBuffer();
-    
+    // Using directBestEffort to avoid buffering issues when clients disconnect/reconnect
+    private final Sinks.Many<String> sensorDataSink = Sinks.many().multicast().directBestEffort();
+
     /**
      * Listen to smoke-fire topic
      */
@@ -27,7 +28,7 @@ public class KafkaConsumerService {
     public void consumeSmokeFire(String message) {
         processMessage(message, "smoke-fire");
     }
-    
+
     /**
      * Listen to vehicle-speed topic
      */
@@ -35,7 +36,7 @@ public class KafkaConsumerService {
     public void consumeVehicleSpeed(String message) {
         processMessage(message, "vehicle-speed");
     }
-    
+
     /**
      * Listen to noise-level topic
      */
@@ -43,7 +44,7 @@ public class KafkaConsumerService {
     public void consumeNoiseLevel(String message) {
         processMessage(message, "noise-level");
     }
-    
+
     /**
      * Listen to air-temp topic
      */
@@ -51,7 +52,7 @@ public class KafkaConsumerService {
     public void consumeAirTemp(String message) {
         processMessage(message, "air-temp");
     }
-    
+
     /**
      * Listen to alerts topic and persist to database
      */
@@ -59,7 +60,7 @@ public class KafkaConsumerService {
     public void consumeAlerts(String message) {
         try {
             JsonNode node = objectMapper.readTree(message);
-            
+
             // Persist critical alerts to database
             String severity = node.get("severity").asText();
             if ("CRITICAL".equals(severity) || "WARNING".equals(severity)) {
@@ -69,46 +70,46 @@ public class KafkaConsumerService {
                 Double value = node.get("value").asDouble();
                 Double threshold = node.get("threshold").asDouble();
                 String alertMessage = node.get("message").asText();
-                
+
                 // Save to database asynchronously
                 databaseService.saveAlert(alertType, severity, city, location, value, threshold, alertMessage)
-                    .subscribe(
-                        saved -> log.debug("Alert persisted: {}", saved.getId()),
-                        error -> log.error("Failed to persist alert: {}", error.getMessage())
-                    );
+                        .subscribe(
+                                saved -> log.debug("Alert persisted: {}", saved.getId()),
+                                error -> log.error("Failed to persist alert: {}", error.getMessage())
+                        );
             }
-            
+
             // Broadcast to SSE clients
             processMessage(message, "alerts");
-            
+
         } catch (Exception e) {
             log.error("Error processing alert: {}", e.getMessage());
         }
     }
-    
+
     /**
      * Process and broadcast message to SSE clients
      */
     private void processMessage(String message, String topic) {
         try {
             String wrappedMessage = String.format(
-                "{\"type\":\"sensor-data\",\"topic\":\"%s\",\"data\":%s}",
-                topic,
-                message
+                    "{\"type\":\"sensor-data\",\"topic\":\"%s\",\"data\":%s}",
+                    topic,
+                    message
             );
-            
+
             // Emit to all SSE subscribers
             sensorDataSink.tryEmitNext(wrappedMessage);
-            
         } catch (Exception e) {
             log.error("Error processing message from {}: {}", topic, e.getMessage());
         }
     }
-    
+
     /**
      * Get the reactive stream for SSE
      */
     public Flux<String> getSensorDataStream() {
-        return sensorDataSink.asFlux();
+        return sensorDataSink.asFlux()
+                .doOnTerminate(() -> log.info("Sensor data stream terminated"));
     }
 }

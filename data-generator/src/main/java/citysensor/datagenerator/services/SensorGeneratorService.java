@@ -26,7 +26,7 @@ public class SensorGeneratorService {
     @Scheduled(fixedRate = 1000)
     public void generateSmokeFire() {
         for (String city : cities) {
-            for (int building = 1; building <= 500; building++) {
+            for (int building = 1; building <= 50; building++) {
                 String location = "Building-" + building;
                 
                 // 99.9% safe, 0.1% fire risk
@@ -38,7 +38,7 @@ public class SensorGeneratorService {
                 kafkaProducerService.sendSensorData("smoke-fire", city, reading);
             }
         }
-        log.info("Sent smoke/fire readings for {} cities, 500 buildings each", cities.length);
+        log.info("Sent smoke/fire readings for {} cities, 50 buildings each", cities.length);
     }
     
     /**

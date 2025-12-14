@@ -96,16 +96,9 @@ export default function App() {
         // Fetch initial data
         const fetchInitialData = async () => {
             try {
-                // Fetch recent alerts
                 const alertsRes = await fetch('http://localhost:8888/api/alerts/recent');
                 const alertsData = await alertsRes.json();
                 alertsData.forEach(processAlert);
-
-                // Fetch stats for each city
-                for (const city of Object.keys(CITIES)) {
-                    // Note: In a real app, we'd have a bulk endpoint or optimize this
-                    // For now, we rely on the stream to populate stats quickly
-                }
             } catch (error) {
                 console.error('Error fetching initial data:', error);
             }
@@ -113,36 +106,96 @@ export default function App() {
 
         fetchInitialData();
 
-        // Connect to SSE stream from Spring WebFlux server
-        const eventSource = new EventSource('http://localhost:8888/api/stream');
+        // Track connection state
+        let eventSource = null;
+        let reconnectTimeout = null;
+        let isMounted = true;
+        let connectionStartTime = 0;
+        const MAX_RECONNECT_DELAY = 15000; // Max 15 seconds delay
+        let reconnectDelay = 1000;
 
-        eventSource.onopen = () => {
-            console.log('✅ Connected to Java Kafka bridge');
+        const connectSSE = () => {
+            if (!isMounted || eventSource) return;
+
+            // Add timestamp to prevent caching
+            const url = new URL('http://localhost:8888/api/stream');
+            url.searchParams.append('t', Date.now().toString());
+
+            const newEventSource = new EventSource(url.toString());
+            eventSource = newEventSource;
+            connectionStartTime = Date.now();
+
+            newEventSource.onopen = (e) => {
+                if (e.target !== eventSource) return;
+                console.log('✅ Connected to Java Kafka bridge');
+                // We don't reset delay here immediately to handle flapping
+            };
+
+            newEventSource.onmessage = (event) => {
+                if (event.target !== eventSource) return;
+                try {
+                    const message = JSON.parse(event.data);
+
+                    if (message.type === 'sensor-data') {
+                        processSensorData(message.data, message.topic);
+                    } else if (message.type === 'alert') {
+                        processAlert(message.data);
+                    }
+                } catch (error) {
+                    console.error('Error parsing SSE message:', error);
+                }
+            };
+
+            newEventSource.onerror = (event) => {
+                if (event.target !== eventSource) return;
+                console.error('❌ SSE connection error:', event);
+
+                newEventSource.close();
+                if (eventSource === newEventSource) {
+                    eventSource = null;
+                }
+
+                if (!isMounted) return;
+
+                const connectionDuration = Date.now() - connectionStartTime;
+
+                // Flapping detection: If connection lasted less than 5 seconds, back off aggressively
+                if (connectionDuration < 5000) {
+                    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+                    console.log(`⚠️ Connection unstable (lasted ${connectionDuration}ms). Increasing delay to ${reconnectDelay}ms`);
+                } else {
+                    // If connection was stable for a while, reset delay
+                    reconnectDelay = 1000;
+                }
+
+                console.log(`🔄 Reconnecting in ${reconnectDelay}ms...`);
+                reconnectTimeout = setTimeout(() => {
+                    if (isMounted) connectSSE();
+                }, reconnectDelay);
+            };
         };
 
-        eventSource.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
+        // Initial connection with 2s delay to allow server to cleanup previous connection
+        const initialTimer = setTimeout(connectSSE, 2000);
 
-                if (message.type === 'sensor-data') {
-                    processSensorData(message.data, message.topic);
-                } else if (message.type === 'alert') {
-                    processAlert(message.data);
-                }
-            } catch (error) {
-                console.error('Error parsing SSE message:', error);
+        const cleanup = () => {
+            console.log('🔌 Cleaning up SSE connection...');
+            isMounted = false;
+            clearTimeout(initialTimer);
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
             }
         };
 
-        eventSource.onerror = (error) => {
-            console.error('❌ SSE connection error:', error);
-            console.log('🔄 Will attempt to reconnect...');
-        };
+        // Ensure cleanup runs on page refresh/close
+        window.addEventListener('beforeunload', cleanup);
 
-        // Cleanup
+        // Cleanup on component unmount
         return () => {
-            eventSource.close();
-            console.log('🔌 Disconnected from SSE stream');
+            window.removeEventListener('beforeunload', cleanup);
+            cleanup();
         };
     }, []);
 
