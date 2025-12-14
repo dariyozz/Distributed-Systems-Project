@@ -93,8 +93,28 @@ export default function App() {
 
         setCityData(initialData);
 
-        // Connect to SSE stream from Java server
-        const eventSource = new EventSource('http://localhost:8888/stream');
+        // Fetch initial data
+        const fetchInitialData = async () => {
+            try {
+                // Fetch recent alerts
+                const alertsRes = await fetch('http://localhost:8888/api/alerts/recent');
+                const alertsData = await alertsRes.json();
+                alertsData.forEach(processAlert);
+
+                // Fetch stats for each city
+                for (const city of Object.keys(CITIES)) {
+                    // Note: In a real app, we'd have a bulk endpoint or optimize this
+                    // For now, we rely on the stream to populate stats quickly
+                }
+            } catch (error) {
+                console.error('Error fetching initial data:', error);
+            }
+        };
+
+        fetchInitialData();
+
+        // Connect to SSE stream from Spring WebFlux server
+        const eventSource = new EventSource('http://localhost:8888/api/stream');
 
         eventSource.onopen = () => {
             console.log('✅ Connected to Java Kafka bridge');
@@ -126,7 +146,21 @@ export default function App() {
         };
     }, []);
 
-// ADD these processing functions (same as before):
+    const acknowledgeAlert = async (alertId, e) => {
+        e.stopPropagation();
+        try {
+            await fetch(`http://localhost:8888/api/alerts/${alertId}/acknowledge`, {
+                method: 'POST'
+            });
+            setAlerts(prev => prev.map(a =>
+                a.id === alertId ? { ...a, acknowledged: true } : a
+            ));
+        } catch (error) {
+            console.error('Error acknowledging alert:', error);
+        }
+    };
+
+    // ADD these processing functions (same as before):
 
     const processSensorData = (data, topic) => {
         if (!data || !data.city) return;
@@ -516,13 +550,12 @@ export default function App() {
                                             <Flame className="w-5 h-5 text-orange-400" />
                                             <h3 className="font-semibold">Fire Risk Assessment</h3>
                                         </div>
-                                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                            cityData[selectedCity].smoke.status === 'CRITICAL' ? 'bg-red-500' :
+                                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${cityData[selectedCity].smoke.status === 'CRITICAL' ? 'bg-red-500' :
                                                 cityData[selectedCity].smoke.status === 'WARNING' ? 'bg-yellow-500' :
                                                     'bg-green-500'
-                                        }`}>
-                      {cityData[selectedCity].smoke.status}
-                    </span>
+                                            }`}>
+                                            {cityData[selectedCity].smoke.status}
+                                        </span>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4 mb-4">
@@ -574,7 +607,7 @@ export default function App() {
                                     <ResponsiveContainer width="100%" height={100}>
                                         <BarChart data={cityData[selectedCity].speed.trend.slice(-10).map((v, i) => ({
                                             speed: v,
-                                            name: `T-${10-i}`,
+                                            name: `T-${10 - i}`,
                                             fill: v > 100 ? '#ef4444' : v > 80 ? '#f59e0b' : '#10b981'
                                         }))}>
                                             <Bar dataKey="speed" />
@@ -608,11 +641,10 @@ export default function App() {
                                         </div>
                                         <div>
                                             <div className="text-sm text-slate-400">Status</div>
-                                            <div className={`text-lg font-bold ${
-                                                cityData[selectedCity].noise.current > 95 ? 'text-red-400' :
+                                            <div className={`text-lg font-bold ${cityData[selectedCity].noise.current > 95 ? 'text-red-400' :
                                                     cityData[selectedCity].noise.current > 85 ? 'text-yellow-400' :
                                                         'text-green-400'
-                                            }`}>
+                                                }`}>
                                                 {cityData[selectedCity].noise.current > 95 ? 'Harmful' :
                                                     cityData[selectedCity].noise.current > 85 ? 'Loud' : 'Normal'}
                                             </div>
@@ -692,8 +724,8 @@ export default function App() {
                                             <div className="text-3xl font-bold">{cityData[selectedCity].temperature.current.toFixed(1)}°C</div>
                                             <div className="text-xs text-slate-500 mt-1">
                                                 Feels {cityData[selectedCity].temperature.current > 30 ? 'Hot' :
-                                                cityData[selectedCity].temperature.current > 20 ? 'Warm' :
-                                                    cityData[selectedCity].temperature.current > 10 ? 'Cool' : 'Cold'}
+                                                    cityData[selectedCity].temperature.current > 20 ? 'Warm' :
+                                                        cityData[selectedCity].temperature.current > 10 ? 'Cool' : 'Cold'}
                                             </div>
                                         </div>
                                         <div className="bg-slate-800 rounded p-3 text-center">
@@ -740,24 +772,22 @@ export default function App() {
                             alerts.map(alert => (
                                 <div
                                     key={alert.id}
-                                    className={`p-3 rounded-lg border-l-4 cursor-pointer transition-all hover:scale-[1.02] ${
-                                        alert.severity === 'CRITICAL'
+                                    className={`p-3 rounded-lg border-l-4 cursor-pointer transition-all hover:scale-[1.02] ${alert.severity === 'CRITICAL'
                                             ? 'bg-red-500/10 border-red-500'
                                             : 'bg-yellow-500/10 border-yellow-500'
-                                    }`}
+                                        }`}
                                     onClick={() => setSelectedCity(alert.city)}
                                 >
                                     <div className="flex items-start justify-between mb-2">
-                    <span className={`px-2 py-1 rounded text-xs font-bold ${
-                        alert.severity === 'CRITICAL'
-                            ? 'bg-red-500 text-white'
-                            : 'bg-yellow-500 text-black'
-                    }`}>
-                      {alert.severity}
-                    </span>
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${alert.severity === 'CRITICAL'
+                                                ? 'bg-red-500 text-white'
+                                                : 'bg-yellow-500 text-black'
+                                            }`}>
+                                            {alert.severity}
+                                        </span>
                                         <span className="text-xs text-slate-400">
-                      {alert.timestamp.toLocaleTimeString()}
-                    </span>
+                                            {alert.timestamp.toLocaleTimeString()}
+                                        </span>
                                     </div>
                                     <div className="font-semibold text-sm mb-1">{alert.type}</div>
                                     <div className="text-xs text-slate-300 mb-2">{alert.message}</div>
@@ -765,6 +795,14 @@ export default function App() {
                                         <MapPin className="w-3 h-3" />
                                         <span className="text-slate-400">{alert.city}</span>
                                     </div>
+                                    {!alert.acknowledged && (
+                                        <button
+                                            onClick={(e) => acknowledgeAlert(alert.id, e)}
+                                            className="mt-2 w-full py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs transition-colors"
+                                        >
+                                            Acknowledge
+                                        </button>
+                                    )}
                                 </div>
                             ))
                         )}

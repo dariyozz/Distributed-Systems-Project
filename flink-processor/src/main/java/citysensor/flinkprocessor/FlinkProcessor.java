@@ -70,11 +70,11 @@ public class FlinkProcessor {
 
         logger.info("Configuring stream for topic: {}", topic);
 
-        // Configure Kafka source
+        // Configure Kafka source with unique group ID per topic
         KafkaSource<String> source = KafkaSource.<String>builder()
                 .setBootstrapServers(kafkaBootstrapServers)
                 .setTopics(topic)
-                .setGroupId("flink-processor-group")
+                .setGroupId("flink-processor-" + topic) // Unique group ID per topic
                 .setStartingOffsets(OffsetsInitializer.latest())
                 .setValueOnlyDeserializer(new SimpleStringSchema())
                 .build();

@@ -3,16 +3,17 @@ package citysensor.flinkprocessor.alerts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.configuration.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Detects critical conditions and generates alerts
  */
-public class AlertDetector implements MapFunction<String, String> {
+public class AlertDetector extends RichMapFunction<String, String> {
     private static final Logger logger = LoggerFactory.getLogger(AlertDetector.class);
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private transient ObjectMapper objectMapper;
 
     // Alert thresholds
     private static final double FIRE_THRESHOLD = 70.0;
@@ -21,6 +22,11 @@ public class AlertDetector implements MapFunction<String, String> {
     private static final double AQI_UNHEALTHY = 150.0;
     private static final double TEMP_EXTREME_LOW = 0.0;
     private static final double TEMP_EXTREME_HIGH = 38.0;
+
+    @Override
+    public void open(Configuration parameters) throws Exception {
+        objectMapper = new ObjectMapper();
+    }
 
     @Override
     public String map(String value) throws Exception {

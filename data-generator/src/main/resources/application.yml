@@ -1,14 +1,38 @@
+server:
+  port: 8888
+
 spring:
   application:
-    name: data-generator
+    name: city-sensor-dashboard-server
+  
+  # R2DBC PostgreSQL Configuration
+  r2dbc:
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:citysensor}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    pool:
+      initial-size: 10
+      max-size: 20
+      max-idle-time: 30m
+  
 
-kafka:
-  bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
-  producer:
-    acks: 1
-    retries: 3
-    linger-ms: 10
-    batch-size: 16384
+  
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: 1
+      retries: 3
+      linger-ms: 10
+      batch-size: 16384
+    consumer:
+      group-id: dashboard-bridge
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: latest
+      enable-auto-commit: true
 
 sensors:
   cities:
@@ -20,7 +44,7 @@ sensors:
 
   intervals:
     smoke-fire: 1000      # 1 second
-    vehicle-speed: 500    # 0.5 seconds (variable)
+    vehicle-speed: 4000   # 4 seconds
     noise-level: 1000     # 1 second
     air-temp: 10000       # 10 seconds
 
@@ -28,3 +52,5 @@ logging:
   level:
     citysensor: INFO
     org.apache.kafka: WARN
+    org.springframework.data.r2dbc: DEBUG
+    io.r2dbc.postgresql: INFO
